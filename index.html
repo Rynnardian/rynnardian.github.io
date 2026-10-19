@@ -23,6 +23,18 @@
             margin-bottom: 16px;
             box-shadow: 0 4px 6px rgba(0,0,0,0.3);
         }
+        textarea {
+            width: 100%;
+            height: 120px;
+            background: #2c2c2c;
+            color: #fff;
+            border: 1px solid #444;
+            border-radius: 8px;
+            padding: 8px;
+            box-sizing: border-box;
+            font-size: 0.9rem;
+            resize: vertical;
+        }
         .video-container {
             position: relative;
             width: 100%;
@@ -46,20 +58,23 @@
             pointer-events: none;
             box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.5);
         }
-        button {
+        button, label.btn-file {
             display: block;
             width: 100%;
             background-color: #bb86fc;
             color: #121212;
             border: none;
-            padding: 14px;
+            padding: 12px;
             font-size: 1rem;
             font-weight: bold;
             border-radius: 8px;
             text-align: center;
             cursor: pointer;
             margin-top: 10px;
+            box-sizing: border-box;
         }
+        label.btn-file { background-color: #03dac6; }
+        input[type="file"] { display: none; }
         .result-box {
             background: #2c2c2c;
             padding: 12px;
@@ -70,11 +85,26 @@
         .miss { color: #888; }
         .counter-list { margin-top: 10px; font-size: 0.9rem; color: #b0b0b0; }
         canvas { display: none; }
+        .info-text { font-size: 0.8rem; color: #aaa; margin-top: 5px; }
     </style>
 </head>
 <body>
 
     <h1>MTG Live Scanner 📷</h1>
+
+    <!-- NEU: Wunschlisten-Verwaltung -->
+    <div class="card">
+        <h3>📋 Wunschliste verwalten</h3>
+        <p class="info-text">Füge hier deine Kartennamen ein (pro Zeile eine Karte, optional mit Menge vorangestellt, z.B. "2 Abundance") oder lade deine .txt-Dateien hoch.</p>
+        
+        <textarea id="wishlistInput" placeholder="Karten hier einfügen..."></textarea>
+        
+        <label class="btn-file" for="fileInput">📁 .txt-Dateien hochladen</label>
+        <input type="file" id="fileInput" accept=".txt" multiple>
+        
+        <button id="saveWishlistBtn">Liste speichern & aktivieren</button>
+        <div id="wishlistStatus" class="info-text" style="color: #03dac6; margin-top: 8px; text-align: center;"></div>
+    </div>
 
     <div class="card">
         <h3>Live-Kamera</h3>
@@ -82,16 +112,16 @@
             <video id="video" autoplay playsinline muted></video>
             <div class="scan-overlay"></div>
         </div>
-        <button id="toggleBtn">Scan Pausieren</button>
-        <p style="font-size: 0.8rem; color: #bb86fc; text-align: center; margin-top: 8px;">
+        <button id="toggleBtn">Scan Starten</button>
+        <p class="info-text" style="text-align: center; color: #bb86fc;">
             Platziere nur den Kartennamen im markierten Kasten!
         </p>
     </div>
 
     <div class="card">
-        <h3>Aktueller Live-Erkennung</h3>
+        <h3>Aktuelle Live-Erkennung</h3>
         <div class="result-box" id="resultBox">
-            Kamera wird gestartet...
+            Bitte lade zuerst eine Wunschliste und starte den Scan.
         </div>
     </div>
 
@@ -105,52 +135,8 @@
     <canvas id="canvas"></canvas>
 
     <script>
-        // Wunschlisten (Englisch & Deutsch)
-        const mtgWishlist = {
-            "abundance": 1, "agent frank horrigan": 1, "aqueous form": 1, "arcane signet": 1,
-            "augur of autumn": 1, "authority of the consuls": 1, "avenger of zendikar": 1, "baldur's gate": 1,
-            "belladonna took": 1, "bilious skulldweller": 1, "black dragon gate": 1, "blackbloom rogue": 1,
-            "bloated contaminator": 1, "boggart trawler": 1, "bonny pall, clearcutter": 1, "broken bond": 1,
-            "captain marvel, earth's protector": 1, "case of the uneaten feast": 1, "circuitous route": 1,
-            "clifftop lookout": 1, "copy land": 1, "core prowler": 1, "courser of kruphix": 1, "disorienting choice": 1,
-            "district guide": 1, "dollmaker's shop/porcelain gallery": 1, "druid class": 1, "essence channeler": 1,
-            "evolution sage": 1, "exemplar of light": 1, "expedition map": 1, "explore": 1, "explore the underdark": 1,
-            "fountainport": 1, "gatebreaker ram": 1, "gatecreeper vine": 1, "gatekeeper gargoyle": 1, "gateway plaza": 1,
-            "gateway sneak": 1, "glaive of the guildpact": 1, "golgari rot farm": 1, "gond gate": 1, "gretchen titchwillow": 1,
-            "growth spiral": 1, "guild summit": 1, "haliya, guided by light": 1, "heap gate": 1, "hostile hostel": 1,
-            "hour of promise": 1, "kazandu mammoth": 1, "leonin vanguard": 1, "llanowar scout": 1, "maze's end": 1,
-            "minwu, white mage": 1, "navigation orb": 1, "nine-fingers keene": 1, "nylea's intervention": 1,
-            "omo, queen of vesuva": 1, "open the way": 1, "oracle of mul daya": 1, "planar nexus": 1, "plaza of harmony": 1,
-            "pollenbright druid": 1, "rampaging baloths": 1, "restoration seminar": 1, "retreat to hagra": 1,
-            "sage of the maze": 1, "scaled herbalist": 1, "scheming aspirant": 1, "smile at death": 1, "splendid reclamation": 1,
-            "sylvan scrying": 1, "tangled florahedron": 1, "tempt with discovery": 1, "thespian's stage": 1,
-            "thran portal": 1, "through the forest gate": 1, "thrumming hivepool": 1, "titania's command": 1,
-            "ulvenwald hydra": 1, "urza's cave": 1, "venerated rotpriest": 1, "wrenn and seven": 1,
-            // Deutsch
-            "arkanes petschaft": 1, "aufgeblähter verseucher": 1, "augurin des herbstes": 1, "autorität der konsuln": 1,
-            "baldurs tor": 1, "belladonna tuk": 1, "boggart-fischerin // boggart-moor": 1, "bonny pall, die abholzerin": 1,
-            "captain marvel, beschützerin der erde": 1, "distriktführerin": 1, "durch die waldpforte": 1,
-            "durchtrennte bande": 1, "ende des labyrinths": 1, "erkunden": 1, "erkundung des unterreichs": 1,
-            "essenz-kanalisierer": 1, "expeditionskarte": 1, "fall des unberührten festmahls": 1, "gallehaltiger hirnbewohner": 1,
-            "gipfeltreffen der gilden": 1, "glefe des gildenbunds": 1, "golgari-verrottungsfarm": 1, "gondstor": 1,
-            "gretchen weidenknirps": 1, "haldentor": 1, "haliya, geleitet vom licht": 1, "heimtückische aspirantin": 1,
-            "kazandu-mammut // kazandu-tal": 1, "kernstrolcher": 1, "klasse der druiden": 1, "klippen-ausguck": 1,
-            "landduplikat": 1, "leoniden-vorhut": 1, "llanowarspäher": 1, "min'u, der weißmagier": 1, "navigationskugel": 1,
-            "neunfinger kien": 1, "nyleas eingreifen": 1, "omo, königin von vesuva": 1, "orakel von mul daya": 1,
-            "platz der harmonie": 1, "pollenbenetzer-druidin": 1, "prächtige renaturierung": 1,
-            "puppenwerkstatt // porzellangalerie": 1, "rennerin des kruphix": 1, "restaurationsseminar": 1,
-            "rückzug nach hagra": 1, "schuppige kräuterkundlerin": 1, "schwarzblütenräuberin // schwarzblütenmoor": 1,
-            "schwarzdrachentor": 1, "stunde der verheißung": 1, "surrendes schwarmbecken": 1, "theaterbühne": 1,
-            "thran-portal": 1, "titanias befehl": 1, "tobende baloths": 1, "torbrechender widder": 1, "torplatz": 1,
-            "torschleicherin": 1, "torumschlingende ranke": 1, "torwächter-gargoyle": 1, "tümpelhaven": 1,
-            "ulvenwald-hydra": 1, "ungastliche herberge // kriechendes gasthaus": 1, "urzas höhle": 1, "verachtung des todes": 1,
-            "verehrte fäulnispriesterin": 1, "verlockung der entdeckung": 1, "verschlungene pfade": 1,
-            "verschlungenes pflanzenpolyeder // verschlungenes tal": 1, "verwirrendes dilemma": 1, "vorbild des lichts": 1,
-            "wachstumsspirale": 1, "wald-hellseherei": 1, "wassergestalt": 1, "weiser evolutionskundler": 1,
-            "weiser des labyrinths": 1, "weltennexus": 1, "wrenn und sieben": 1, "zendikars rächer": 1,
-            "öffnung des weges": 1, "überfluss": 1
-        };
-
+        // Globale Variablen
+        let mtgWishlist = {};
         const foundCounts = {};
         let isScanning = false;
         let worker = null;
@@ -161,6 +147,82 @@
         const toggleBtn = document.getElementById('toggleBtn');
         const resultBox = document.getElementById('resultBox');
         const counterListDiv = document.getElementById('counterList');
+        const wishlistInput = document.getElementById('wishlistInput');
+        const saveWishlistBtn = document.getElementById('saveWishlistBtn');
+        const fileInput = document.getElementById('fileInput');
+        const wishlistStatus = document.getElementById('wishlistStatus');
+
+        // Beim Start: Prüfen ob bereits eine Liste im Browser-Speicher liegt
+        window.addEventListener('load', () => {
+            const savedList = localStorage.getItem('mtg_wishlist_data');
+            if (savedList) {
+                try {
+                    mtgWishlist = JSON.parse(savedList);
+                    wishlistInput.value = localStorage.getItem('mtg_wishlist_raw') || '';
+                    wishlistStatus.innerText = `Geladen: ${Object.keys(mtgWishlist).length} Karten aktiv.`;
+                } catch (e) {
+                    console.error(e);
+                }
+            } else {
+                wishlistStatus.innerText = "Bitte Wunschliste einfügen oder hochladen!";
+            }
+            initCamera();
+        });
+
+        // Liste manuell über Textarea speichern
+        saveWishlistBtn.addEventListener('click', () => {
+            const text = wishlistInput.value;
+            parseAndSaveWishlist(text);
+        });
+
+        // Dateien hochladen (.txt)
+        fileInput.addEventListener('change', async (e) => {
+            const files = e.target.files;
+            if (!files.length) return;
+
+            let combinedText = wishlistInput.value ? wishlistInput.value + "\n" : "";
+
+            for (const file of files) {
+                const text = await file.text();
+                combinedText += text + "\n";
+            }
+
+            wishlistInput.value = combinedText;
+            parseAndSaveWishlist(combinedText);
+        });
+
+        // Text in Wunschlisten-Objekt umwandeln
+        function parseAndSaveWishlist(rawText) {
+            const lines = rawText.split('\n');
+            const newList = {};
+
+            for (let line of lines) {
+                line = line.trim();
+                if (!line) continue;
+
+                let qty = 1;
+                let cardName = line;
+
+                // Prüfen ob am Anfang eine Menge steht (z.B. "2 Kartenname" oder "4x Kartenname")
+                const match = line.match(/^(\d+)(?:x)?\s+(.+)$/i);
+                if (match) {
+                    qty = parseInt(match[1], 10);
+                    cardName = match[2];
+                }
+
+                const cleanName = cardName.toLowerCase().trim();
+                if (cleanName.length > 1) {
+                    newList[cleanName] = qty;
+                }
+            }
+
+            mtgWishlist = newList;
+            localStorage.setItem('mtg_wishlist_data', JSON.stringify(mtgWishlist));
+            localStorage.setItem('mtg_wishlist_raw', rawText);
+
+            wishlistStatus.innerText = `Erfolgreich gespeichert: ${Object.keys(mtgWishlist).length} Karten aktiv!`;
+            resultBox.innerHTML = "Wunschliste aktualisiert. Bereit zum Scannen!";
+        }
 
         async function initCamera() {
             try {
@@ -170,13 +232,23 @@
                 video.srcObject = stream;
                 
                 worker = await Tesseract.createWorker('eng+deu');
-                resultBox.innerHTML = "Bereit zum Scannen! Lege den Kartennamen in den Kasten.";
-                startScanning();
             } catch (err) {
                 console.error(err);
                 resultBox.innerHTML = "<span class='miss'>Kamerazugriff fehlgeschlagen. HTTPS prüfen!</span>";
             }
         }
+
+        toggleBtn.addEventListener('click', () => {
+            if (Object.keys(mtgWishlist).length === 0) {
+                alert("Bitte erst eine Wunschliste einfügen und speichern!");
+                return;
+            }
+            if (isScanning) {
+                stopScanning();
+            } else {
+                startScanning();
+            }
+        });
 
         function startScanning() {
             isScanning = true;
@@ -188,11 +260,6 @@
             isScanning = false;
             toggleBtn.innerText = "Scan Starten";
         }
-
-        toggleBtn.addEventListener('click', () => {
-            if (isScanning) stopScanning();
-            else startScanning();
-        });
 
         async function scanLoop() {
             if (!isScanning) return;
@@ -229,7 +296,6 @@
             let matchedCard = null;
 
             for (const [cardName] of Object.entries(mtgWishlist)) {
-                // Exakter Treffer ODER strenger Fuzzy-Match (alle Wörter müssen vorkommen)
                 if (cleanText.includes(cardName) || isStrictFuzzyMatch(cleanText, cardName)) {
                     matchedCard = cardName;
                     break;
@@ -256,13 +322,12 @@
             }
         }
 
-        // STRENGER Fuzzy-Match: Alle relevanten Wörter (> 3 Zeichen) müssen im Text vorkommen
         function isStrictFuzzyMatch(text, cardName) {
             if (cardName.length < 5) return false;
             const cardWords = cardName.split(' ');
             for (const word of cardWords) {
                 if (word.length > 3 && !text.includes(word)) {
-                    return false; // Wenn auch nur ein wichtiges Wort fehlt, ist es kein Treffer!
+                    return false;
                 }
             }
             return true;
@@ -284,8 +349,6 @@
         function capitalizeWords(str) {
             return str.replace(/\b\w/g, l => l.toUpperCase());
         }
-
-        window.addEventListener('load', initCamera);
     </script>
 </body>
 </html>
