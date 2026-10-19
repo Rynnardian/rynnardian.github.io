@@ -35,7 +35,6 @@
             height: auto;
             display: block;
         }
-        /* Der Scan-Kasten (muss exakt mit der Logik im JS übereinstimmen) */
         .scan-overlay {
             position: absolute;
             top: 35%;
@@ -45,7 +44,7 @@
             border: 2px dashed #bb86fc;
             box-sizing: border-box;
             pointer-events: none;
-            box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.5); /* Abdunklung außerhalb des Kastens */
+            box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.5);
         }
         button {
             display: block;
@@ -202,8 +201,6 @@
             const vWidth = video.videoWidth || 640;
             const vHeight = video.videoHeight || 480;
 
-            // EXAKTES CROPPING: Nur den Bereich ausschneiden, den der Kasten markiert
-            // Kasten-Position laut CSS: top: 35%, left: 5%, width: 90%, height: 30%
             const cropX = vWidth * 0.05;
             const cropY = vHeight * 0.35;
             const cropW = vWidth * 0.90;
@@ -212,7 +209,6 @@
             canvas.width = cropW;
             canvas.height = cropH;
 
-            // Zeichne nur den Ausschnitt aus dem Video auf das Canvas
             ctx.drawImage(video, cropX, cropY, cropW, cropH, 0, 0, cropW, cropH);
 
             try {
@@ -224,7 +220,7 @@
             }
 
             if (isScanning) {
-                setTimeout(scanLoop, 600); // alle 600ms scannen
+                setTimeout(scanLoop, 600);
             }
         }
 
@@ -233,8 +229,8 @@
             let matchedCard = null;
 
             for (const [cardName] of Object.entries(mtgWishlist)) {
-                // Prüfen ob der Name im Ausschnitt vorkommt oder sehr ähnlich ist
-                if (cleanText.includes(cardName) || isFuzzyMatch(cleanText, cardName)) {
+                // Exakter Treffer ODER strenger Fuzzy-Match (alle Wörter müssen vorkommen)
+                if (cleanText.includes(cardName) || isStrictFuzzyMatch(cleanText, cardName)) {
                     matchedCard = cardName;
                     break;
                 }
@@ -252,6 +248,7 @@
                     <p style="font-size:0.85rem;">Gelesen im Kasten: "${escapeHtml(rawText)}"</p>
                 `;
             } else {
+                lastScannedCard = "";
                 resultBox.innerHTML = `
                     <p class="miss">Suche im Kasten...</p>
                     <p style="font-size:0.8rem; color:#aaa;">Gelesen: "${escapeHtml(rawText)}"</p>
@@ -259,16 +256,16 @@
             }
         }
 
-        // Einfacher Toleranz-Check für kleine OCR-Lesefehler (z. B. 1-2 Buchstaben abweichend)
-        function isFuzzyMatch(text, cardName) {
+        // STRENGER Fuzzy-Match: Alle relevanten Wörter (> 3 Zeichen) müssen im Text vorkommen
+        function isStrictFuzzyMatch(text, cardName) {
             if (cardName.length < 5) return false;
-            // Wenn mindestens 80% der Wörter übereinstimmen
             const cardWords = cardName.split(' ');
-            let matches = 0;
             for (const word of cardWords) {
-                if (word.length > 3 && text.includes(word)) matches++;
+                if (word.length > 3 && !text.includes(word)) {
+                    return false; // Wenn auch nur ein wichtiges Wort fehlt, ist es kein Treffer!
+                }
             }
-            return matches >= Math.ceil(cardName.split(' ').length / 2);
+            return true;
         }
 
         function updateCounterDisplay() {
