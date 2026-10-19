@@ -92,10 +92,10 @@
 
     <h1>MTG Live Scanner 📷</h1>
 
-    <!-- NEU: Wunschlisten-Verwaltung -->
+    <!-- Wunschlisten-Verwaltung -->
     <div class="card">
         <h3>📋 Wunschliste verwalten</h3>
-        <p class="info-text">Füge hier deine Kartennamen ein (pro Zeile eine Karte, optional mit Menge vorangestellt, z.B. "2 Abundance") oder lade deine .txt-Dateien hoch.</p>
+        <p class="info-text">Füge hier deine Kartennamen ein (Doppelseitige Karten mit "//" werden automatisch in Vorder- und Rückseite aufgeteilt).</p>
         
         <textarea id="wishlistInput" placeholder="Karten hier einfügen..."></textarea>
         
@@ -135,7 +135,6 @@
     <canvas id="canvas"></canvas>
 
     <script>
-        // Globale Variablen
         let mtgWishlist = {};
         const foundCounts = {};
         let isScanning = false;
@@ -152,14 +151,13 @@
         const fileInput = document.getElementById('fileInput');
         const wishlistStatus = document.getElementById('wishlistStatus');
 
-        // Beim Start: Prüfen ob bereits eine Liste im Browser-Speicher liegt
         window.addEventListener('load', () => {
             const savedList = localStorage.getItem('mtg_wishlist_data');
             if (savedList) {
                 try {
                     mtgWishlist = JSON.parse(savedList);
                     wishlistInput.value = localStorage.getItem('mtg_wishlist_raw') || '';
-                    wishlistStatus.innerText = `Geladen: ${Object.keys(mtgWishlist).length} Karten aktiv.`;
+                    wishlistStatus.innerText = `Geladen: ${Object.keys(mtgWishlist).length} Suchbegriffe aktiv.`;
                 } catch (e) {
                     console.error(e);
                 }
@@ -169,13 +167,11 @@
             initCamera();
         });
 
-        // Liste manuell über Textarea speichern
         saveWishlistBtn.addEventListener('click', () => {
             const text = wishlistInput.value;
             parseAndSaveWishlist(text);
         });
 
-        // Dateien hochladen (.txt)
         fileInput.addEventListener('change', async (e) => {
             const files = e.target.files;
             if (!files.length) return;
@@ -191,7 +187,7 @@
             parseAndSaveWishlist(combinedText);
         });
 
-        // Text in Wunschlisten-Objekt umwandeln
+        // Text verarbeiten und bei "//" automatisch aufteilen
         function parseAndSaveWishlist(rawText) {
             const lines = rawText.split('\n');
             const newList = {};
@@ -203,16 +199,27 @@
                 let qty = 1;
                 let cardName = line;
 
-                // Prüfen ob am Anfang eine Menge steht (z.B. "2 Kartenname" oder "4x Kartenname")
+                // Menge am Anfang erkennen (z.B. "2 Abundance" oder "4x Arkanes Petschaft")
                 const match = line.match(/^(\d+)(?:x)?\s+(.+)$/i);
                 if (match) {
                     qty = parseInt(match[1], 10);
                     cardName = match[2];
                 }
 
-                const cleanName = cardName.toLowerCase().trim();
-                if (cleanName.length > 1) {
-                    newList[cleanName] = qty;
+                // Prüfen ob es eine doppelseitige Karte mit "//" ist
+                if (cardName.includes('//')) {
+                    const sides = cardName.split('//');
+                    for (let side of sides) {
+                        const cleanSide = side.toLowerCase().trim();
+                        if (cleanSide.length > 1) {
+                            newList[cleanSide] = qty;
+                        }
+                    }
+                } else {
+                    const cleanName = cardName.toLowerCase().trim();
+                    if (cleanName.length > 1) {
+                        newList[cleanName] = qty;
+                    }
                 }
             }
 
@@ -220,8 +227,8 @@
             localStorage.setItem('mtg_wishlist_data', JSON.stringify(mtgWishlist));
             localStorage.setItem('mtg_wishlist_raw', rawText);
 
-            wishlistStatus.innerText = `Erfolgreich gespeichert: ${Object.keys(mtgWishlist).length} Karten aktiv!`;
-            resultBox.innerHTML = "Wunschliste aktualisiert. Bereit zum Scannen!";
+            wishlistStatus.innerText = `Erfolgreich gespeichert: ${Object.keys(mtgWishlist).length} Suchbegriffe aktiv!`;
+            resultBox.innerHTML = "Wunschliste aktualisiert. Doppelseitige Karten wurden aufgeteilt!";
         }
 
         async function initCamera() {
