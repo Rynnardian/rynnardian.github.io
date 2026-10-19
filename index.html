@@ -35,16 +35,17 @@
             height: auto;
             display: block;
         }
-        /* Fokus-Rahmen als Lesehilfe für den Kartennamen */
+        /* Der Scan-Kasten (muss exakt mit der Logik im JS übereinstimmen) */
         .scan-overlay {
             position: absolute;
-            top: 10%;
+            top: 35%;
             left: 5%;
             width: 90%;
-            height: 25%;
+            height: 30%;
             border: 2px dashed #bb86fc;
             box-sizing: border-box;
             pointer-events: none;
+            box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.5); /* Abdunklung außerhalb des Kastens */
         }
         button {
             display: block;
@@ -82,9 +83,9 @@
             <video id="video" autoplay playsinline muted></video>
             <div class="scan-overlay"></div>
         </div>
-        <button id="toggleBtn">Start / Stopp Live-Scan</button>
-        <p style="font-size: 0.8rem; color: #888; text-align: center; margin-top: 5px;">
-            Platziere den Kartennamen im gestrichelten Rahmen.
+        <button id="toggleBtn">Scan Pausieren</button>
+        <p style="font-size: 0.8rem; color: #bb86fc; text-align: center; margin-top: 8px;">
+            Platziere nur den Kartennamen im markierten Kasten!
         </p>
     </div>
 
@@ -102,11 +103,10 @@
         </div>
     </div>
 
-    <!-- Unsichtbares Canvas für Schnappschüsse -->
     <canvas id="canvas"></canvas>
 
     <script>
-        // Integrierte Wunschlisten (Englisch & Deutsch)[cite: 1, 2]
+        // Wunschlisten (Englisch & Deutsch)
         const mtgWishlist = {
             "abundance": 1, "agent frank horrigan": 1, "aqueous form": 1, "arcane signet": 1,
             "augur of autumn": 1, "authority of the consuls": 1, "avenger of zendikar": 1, "baldur's gate": 1,
@@ -127,7 +127,7 @@
             "sylvan scrying": 1, "tangled florahedron": 1, "tempt with discovery": 1, "thespian's stage": 1,
             "thran portal": 1, "through the forest gate": 1, "thrumming hivepool": 1, "titania's command": 1,
             "ulvenwald hydra": 1, "urza's cave": 1, "venerated rotpriest": 1, "wrenn and seven": 1,
-            // Deutsch[cite: 2]
+            // Deutsch
             "arkanes petschaft": 1, "aufgeblähter verseucher": 1, "augurin des herbstes": 1, "autorität der konsuln": 1,
             "baldurs tor": 1, "belladonna tuk": 1, "boggart-fischerin // boggart-moor": 1, "bonny pall, die abholzerin": 1,
             "captain marvel, beschützerin der erde": 1, "distriktführerin": 1, "durch die waldpforte": 1,
@@ -163,21 +163,19 @@
         const resultBox = document.getElementById('resultBox');
         const counterListDiv = document.getElementById('counterList');
 
-        // Kamera starten
         async function initCamera() {
             try {
                 const stream = await navigator.mediaDevices.getUserMedia({
-                    video: { facingMode: "environment" } // Rückkamera nutzen
+                    video: { facingMode: "environment" }
                 });
                 video.srcObject = stream;
                 
-                // OCR-Worker im Hintergrund vorladen
                 worker = await Tesseract.createWorker('eng+deu');
-                resultBox.innerHTML = "Bereit zum Scannen!";
+                resultBox.innerHTML = "Bereit zum Scannen! Lege den Kartennamen in den Kasten.";
                 startScanning();
             } catch (err) {
                 console.error(err);
-                resultBox.innerHTML = "<span class='miss'>Kamerazugriff fehlgeschlagen. Bitte HTTPS-Verbindung prüfen!</span>";
+                resultBox.innerHTML = "<span class='miss'>Kamerazugriff fehlgeschlagen. HTTPS prüfen!</span>";
             }
         }
 
@@ -200,14 +198,24 @@
         async function scanLoop() {
             if (!isScanning) return;
 
-            // Bild aus Video auf Canvas zeichnen
             const ctx = canvas.getContext('2d');
-            canvas.width = video.videoWidth || 640;
-            canvas.height = video.videoHeight || 480;
-            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            const vWidth = video.videoWidth || 640;
+            const vHeight = video.videoHeight || 480;
+
+            // EXAKTES CROPPING: Nur den Bereich ausschneiden, den der Kasten markiert
+            // Kasten-Position laut CSS: top: 35%, left: 5%, width: 90%, height: 30%
+            const cropX = vWidth * 0.05;
+            const cropY = vHeight * 0.35;
+            const cropW = vWidth * 0.90;
+            const cropH = vHeight * 0.30;
+
+            canvas.width = cropW;
+            canvas.height = cropH;
+
+            // Zeichne nur den Ausschnitt aus dem Video auf das Canvas
+            ctx.drawImage(video, cropX, cropY, cropW, cropH, 0, 0, cropW, cropH);
 
             try {
-                // OCR auf dem aktuellen Frame ausführen
                 const ret = await worker.recognize(canvas);
                 const rawText = ret.data.text.trim();
                 processLiveText(rawText);
@@ -215,9 +223,8 @@
                 console.error(e);
             }
 
-            // Nächsten Durchlauf starten
             if (isScanning) {
-                setTimeout(scanLoop, 500); // Scanned alle 500ms (2x pro Sekunde)
+                setTimeout(scanLoop, 600); // alle 600ms scannen
             }
         }
 
@@ -226,14 +233,14 @@
             let matchedCard = null;
 
             for (const [cardName] of Object.entries(mtgWishlist)) {
-                if (cleanText.includes(cardName)) {
+                // Prüfen ob der Name im Ausschnitt vorkommt oder sehr ähnlich ist
+                if (cleanText.includes(cardName) || isFuzzyMatch(cleanText, cardName)) {
                     matchedCard = cardName;
                     break;
                 }
             }
 
             if (matchedCard) {
-                // Verhindert mehrfaches Zählen der gleichen Karte im Dauerstream
                 if (lastScannedCard !== matchedCard) {
                     lastScannedCard = matchedCard;
                     foundCounts[matchedCard] = (foundCounts[matchedCard] || 0) + 1;
@@ -242,15 +249,26 @@
 
                 resultBox.innerHTML = `
                     <p class="hit">🎉 TREFFER: ${capitalizeWords(matchedCard)}</p>
-                    <p>Gelesen: "${escapeHtml(rawText)}"</p>
+                    <p style="font-size:0.85rem;">Gelesen im Kasten: "${escapeHtml(rawText)}"</p>
                 `;
             } else {
-                lastScannedCard = "";
                 resultBox.innerHTML = `
-                    <p class="miss">Suche läuft...</p>
-                    <p style="font-size:0.8rem;">Gelesen: "${escapeHtml(rawText)}"</p>
+                    <p class="miss">Suche im Kasten...</p>
+                    <p style="font-size:0.8rem; color:#aaa;">Gelesen: "${escapeHtml(rawText)}"</p>
                 `;
             }
+        }
+
+        // Einfacher Toleranz-Check für kleine OCR-Lesefehler (z. B. 1-2 Buchstaben abweichend)
+        function isFuzzyMatch(text, cardName) {
+            if (cardName.length < 5) return false;
+            // Wenn mindestens 80% der Wörter übereinstimmen
+            const cardWords = cardName.split(' ');
+            let matches = 0;
+            for (const word of cardWords) {
+                if (word.length > 3 && text.includes(word)) matches++;
+            }
+            return matches >= Math.ceil(cardName.split(' ').length / 2);
         }
 
         function updateCounterDisplay() {
@@ -270,7 +288,6 @@
             return str.replace(/\b\w/g, l => l.toUpperCase());
         }
 
-        // Kamera beim Laden starten
         window.addEventListener('load', initCamera);
     </script>
 </body>
